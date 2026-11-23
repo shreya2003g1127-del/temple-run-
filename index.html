@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Temple Run 3D - Relic Runner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a120b;
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .font-temple {
+            font-family: 'Cinzel', serif;
+        }
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .interactive {
+            pointer-events: auto;
+        }
+        .btn-temple {
+            background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+            border: 3px solid #fef3c7;
+            box-shadow: 0 6px 0 #78350f, 0 12px 20px rgba(0,0,0,0.6);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn-temple:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #78350f, 0 6px 10px rgba(0,0,0,0.6);
+        }
+        .glass-panel {
+            background: rgba(28, 18, 10, 0.85);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(245, 158, 11, 0.5);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { text-shadow: 0 0 15px rgba(245, 158, 11, 0.8); }
+            50% { text-shadow: 0 0 30px rgba(251, 191, 36, 1), 0 0 10px #ffffff; }
+        }
+        .title-glow {
+            animation: pulseGlow 2.5s infinite;
+        }
+        #danger-vignette {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            box-shadow: inset 0 0 80px rgba(220, 38, 38, 0);
+            transition: box-shadow 0.3s ease;
+            z-index: 5;
+        }
+        .danger-active {
+            box-shadow: inset 0 0 100px rgba(220, 38, 38, 0.85) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Red Danger Vignette when Demon Guardians are close -->
+    <div id="danger-vignette"></div>
+
+    <!-- Main UI Layer -->
+    <div class="ui-layer flex flex-col justify-between p-4 sm:p-6">
+        
+        <!-- Top HUD (Visible during gameplay) -->
+        <div id="hud-top" class="hidden flex justify-between items-start w-full">
+            <!-- Left: Distance & Multiplier -->
+            <div class="flex flex-col gap-2">
+                <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-3">
+                    <div>
+                        <div class="text-xs text-amber-300/80 uppercase font-bold tracking-wider">Score</div>
+                        <div id="score-display" class="text-2xl sm:text-3xl font-black text-white font-temple tracking-wide">0</div>
+                    </div>
+                    <div class="h-8 w-[1px] bg-amber-500/30"></div>
+                    <div class="text-center">
+                        <div class="text-xs text-amber-300/80 uppercase font-bold">Mult</div>
+                        <div id="multiplier-display" class="text-lg sm:text-xl font-extrabold text-amber-400">1x</div>
+                    </div>
+                </div>
+
+                <!-- Active Power-up Bar -->
+                <div id="powerup-container" class="hidden glass-panel px-3 py-2 rounded-xl flex flex-col gap-1 w-44">
+                    <div class="flex justify-between items-center text-xs font-bold">
+                        <span id="powerup-name" class="text-cyan-300 uppercase">MAGNET</span>
+                        <span id="powerup-time" class="text-white">10s</span>
+                    </div>
+                    <div class="w-full bg-stone-800 h-2 rounded-full overflow-hidden">
+                        <div id="powerup-bar" class="bg-gradient-to-r from-cyan-400 to-blue-500 h-full w-full transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Coins & Pause Button -->
+            <div class="flex items-center gap-3">
+                <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-400 to-yellow-200 border-2 border-yellow-100 flex items-center justify-center shadow-md">
+                        <span class="text-amber-900 font-black text-xs">$</span>
+                    </div>
+                    <span id="coins-display" class="text-xl sm:text-2xl font-extrabold text-yellow-300">0</span>
+                </div>
+                <button id="btn-pause" class="interactive glass-panel p-3 rounded-xl text-amber-200 hover:text-white hover:bg-amber-900/50 transition active:scale-95" aria-label="Pause Game">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Turn Indicator Prompt -->
+        <div id="turn-prompt" class="hidden self-center my-auto text-center pointer-events-none animate-bounce">
+            <div class="bg-amber-500/90 text-stone-950 font-temple font-black text-xl sm:text-2xl px-6 py-2 rounded-full border-2 border-white shadow-lg">
+                SWIPE TO TURN!
+            </div>
+        </div>
+
+        <!-- Bottom On-Screen Touch/Click Controls (Helpful for Desktop & Mobile Accessibility) -->
+        <div id="mobile-controls" class="hidden interactive self-center w-full max-w-md flex justify-between items-center pb-2 opacity-75 hover:opacity-100 transition-opacity">
+            <button id="ctrl-left" class="glass-panel p-4 rounded-2xl text-amber-300 active:bg-amber-600 active:text-white">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="flex gap-4">
+                <button id="ctrl-up" class="glass-panel p-4 rounded-2xl text-amber-300 active:bg-amber-600 active:text-white">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+                </button>
+                <button id="ctrl-down" class="glass-panel p-4 rounded-2xl text-amber-300 active:bg-amber-600 active:text-white">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+            </div>
+            <button id="ctrl-right" class="glass-panel p-4 rounded-2xl text-amber-300 active:bg-amber-600 active:text-white">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- START SCREEN OVERLAY -->
+    <div id="screen-start" class="ui-layer interactive flex flex-col items-center justify-center p-6 bg-black/50 backdrop-blur-sm">
+        <div class="glass-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 text-center flex flex-col items-center">
+            <div class="text-amber-400 text-xs sm:text-sm font-bold tracking-[0.3em] uppercase mb-1">Ancient Cursed Ruins</div>
+            <h1 class="font-temple text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-amber-400 to-amber-700 title-glow mb-2">
+                TEMPLE RUN
+            </h1>
+            <p class="text-stone-300 text-sm sm:text-base mb-6">Escape the Demon Guardians with the Cursed Idol!</p>
+
+            <!-- High Score & Bank -->
+            <div class="grid grid-cols-2 gap-4 w-full mb-6">
+                <div class="bg-stone-900/90 border border-amber-500/30 rounded-2xl p-3">
+                    <div class="text-xs text-stone-400 uppercase font-bold">Best Score</div>
+                    <div id="start-best-score" class="text-xl sm:text-2xl font-temple font-bold text-amber-400">0</div>
+                </div>
+                <div class="bg-stone-900/90 border border-amber-500/30 rounded-2xl p-3">
+                    <div class="text-xs text-stone-400 uppercase font-bold">Total Coins</div>
+                    <div id="start-total-coins" class="text-xl sm:text-2xl font-bold text-yellow-300">0</div>
+                </div>
+            </div>
+
+            <!-- Controls Guide -->
+            <div class="bg-stone-950/70 rounded-2xl p-4 w-full mb-6 text-left border border-stone-800">
+                <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Explorer Controls</div>
+                <div class="grid grid-cols-2 gap-y-2 text-xs sm:text-sm text-stone-300">
+                    <div><span class="text-white font-bold">← / → or A / D:</span> Turn / Move Lane</div>
+                    <div><span class="text-white font-bold">↑ / W / Space:</span> Jump Over Gaps</div>
+                    <div><span class="text-white font-bold">↓ / S:</span> Slide Under Fire</div>
+                    <div><span class="text-white font-bold">Swipe Screen:</span> Full Touch Support</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 w-full">
+                <button id="btn-play" class="btn-temple flex-1 py-4 px-8 rounded-2xl font-temple font-black text-xl sm:text-2xl text-stone-950 tracking-wider uppercase cursor-pointer">
+                    RUN FOR YOUR LIFE
+                </button>
+                <button id="btn-sound-toggle" class="glass-panel py-4 px-5 rounded-2xl text-amber-300 hover:text-white flex items-center justify-center gap-2 font-bold cursor-pointer">
+                    <span id="sound-icon">🔊</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAUSE SCREEN OVERLAY -->
+    <div id="screen-pause" class="hidden ui-layer interactive flex flex-col items-center justify-center p-6 bg-black/70 backdrop-blur-md">
+        <div class="glass-panel max-w-sm w-full rounded-3xl p-8 text-center flex flex-col gap-4">
+            <h2 class="font-temple text-3xl font-black text-amber-400">GAME PAUSED</h2>
+            <p class="text-stone-300 text-sm mb-2">Catch your breath, explorer. The guardians are still hungry.</p>
+            <button id="btn-resume" class="btn-temple py-3.5 px-6 rounded-2xl font-temple font-black text-xl text-stone-950 uppercase cursor-pointer">
+                RESUME RUN
+            </button>
+            <button id="btn-restart-pause" class="bg-stone-800 hover:bg-stone-700 text-amber-200 border border-amber-500/30 py-3 px-6 rounded-2xl font-bold uppercase cursor-pointer transition">
+                RESTART
+            </button>
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN OVERLAY -->
+    <div id="screen-gameover" class="hidden ui-layer interactive flex flex-col items-center justify-center p-6 bg-black/75 backdrop-blur-md">
+        <div class="glass-panel max-w-md w-full rounded-3xl p-6 sm:p-8 text-center flex flex-col items-center">
+            <div id="gameover-reason" class="text-red-400 text-xs sm:text-sm font-extrabold tracking-widest uppercase mb-1">CAUGHT BY THE GUARDIANS</div>
+            <h2 class="font-temple text-4xl sm:text-5xl font-black text-white mb-6">RUN ENDED</h2>
+
+            <div id="new-record-badge" class="hidden bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 font-black text-xs px-4 py-1 rounded-full uppercase tracking-wider mb-4 animate-bounce">
+                ★ NEW HIGH SCORE! ★
+            </div>
+
+            <div class="w-full bg-stone-900/90 border border-amber-500/30 rounded-2xl p-4 mb-6 flex flex-col gap-3">
+                <div class="flex justify-between items-center border-b border-stone-800 pb-2">
+                    <span class="text-stone-400 font-semibold">Final Score</span>
+                    <span id="over-score" class="text-2xl font-temple font-black text-amber-400">0</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-stone-800 pb-2">
+                    <span class="text-stone-400 font-semibold">Distance Run</span>
+                    <span id="over-distance" class="text-lg font-bold text-white">0m</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-stone-800 pb-2">
+                    <span class="text-stone-400 font-semibold">Coins Collected</span>
+                    <span id="over-coins" class="text-lg font-bold text-yellow-300">0</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-stone-400 font-semibold">All-Time Best</span>
+                    <span id="over-best" class="text-lg font-bold text-amber-200">0</span>
+                </div>
+            </div>
+
+            <button id="btn-play-again" class="btn-temple w-full py-4 px-8 rounded-2xl font-temple font-black text-xl sm:text-2xl text-stone-950 tracking-wider uppercase cursor-pointer">
+                RUN AGAIN
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * TEMPLE RUN 3D - COMPLETE INFINITE RUNNER ENGINE
+         * Built with Three.js (3D Rendering), Tone.js (Procedural Audio), and Vanilla JS
+         * ============================================================================
+         */
+
+        // --- SOUND ENGINE (Tone.js Procedural Web Audio) ---
+        class SoundManager {
+            constructor() {
+                this.enabled = true;
+                this.initialized = false;
+                this.synth = null;
+                this.coinSynth = null;
+                this.noiseSynth = null;
+            }
+
+            async init() {
+                if (this.initialized) return;
+                try {
+                    await Tone.start();
+                    // General action synth
+                    this.synth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: "triangle" },
+                        envelope: { attack: 0.01, decay: 0.15, sustain: 0.05, release: 0.2 }
+                    }).toDestination();
+                    this.synth.volume.value = -8;
+
+                    // Metallic coin chime
+                    this.coinSynth = new Tone.MetalSynth({
+                        frequency: 950,
+                        envelope: { attack: 0.001, decay: 0.18, release: 0.05 },
+                        harmonicity: 5.1,
+                        modulationIndex: 16,
+                        resonance: 4000,
+                        octaves: 1.5
+                    }).toDestination();
+                    this.coinSynth.volume.value = -14;
+
+                    // Slide / Crash / Footstep noise
+                    this.noiseSynth = new Tone.NoiseSynth({
+                        noise: { type: "brown" },
+                        envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 }
+                    }).toDestination();
+                    this.noiseSynth.volume.value = -12;
+
+                    this.initialized = true;
+                } catch (e) {
+                    console.warn("Audio initialization skipped:", e);
+                }
+            }
+
+            playJump() {
+                if (!this.enabled || !this.initialized) return;
+                this.synth.triggerAttackRelease(["C4", "G4"], "16n");
+            }
+
+            playSlide() {
+                if (!this.enabled || !this.initialized) return;
+                this.noiseSynth.triggerAttackRelease("8n");
+            }
+
+            playTurn() {
+                if (!this.enabled || !this.initialized) return;
+                this.synth.triggerAttackRelease("E4", "32n");
+            }
+
+            playCoin(pitchOffset = 0) {
+                if (!this.enabled || !this.initialized) return;
+                const notes = ["B5", "C6", "D6", "E6", "G6"];
+                const note = notes[pitchOffset % notes.length];
+                this.synth.triggerAttackRelease(note, "32n");
+            }
+
+            playPowerup() {
+                if (!this.enabled || !this.initialized) return;
+                const now = Tone.now();
+                this.synth.triggerAttackRelease("C5", "16n", now);
+                this.synth.triggerAttackRelease("E5", "16n", now + 0.08);
+                this.synth.triggerAttackRelease("G5", "16n", now + 0.16);
+                this.synth.triggerAttackRelease("C6", "8n", now + 0.24);
+            }
+
+            playStumble() {
+                if (!this.enabled || !this.initialized) return;
+                this.noiseSynth.triggerAttackRelease("4n");
+                this.synth.triggerAttackRelease(["C2", "F#2"], "8n");
+            }
+
+            playGameOver() {
+                if (!this.enabled || !this.initialized) return;
+                const now = Tone.now();
+                this.synth.triggerAttackRelease("G3", "8n", now);
+                this.synth.triggerAttackRelease("Eb3", "8n", now + 0.18);
+                this.synth.triggerAttackRelease("C3", "4n", now + 0.36);
+            }
+        }
+
+        const sound = new SoundManager();
+
+        // --- GAME CONSTANTS & CONFIGURATION ---
+        const CONFIG = {
+            PATH_WIDTH: 7.5,
+            SEGMENT_LENGTH: 16,
+            VISIBLE_SEGMENTS: 18,
+            BASE_SPEED: 26,
+            MAX_SPEED: 54,
+            SPEED_INCREMENT: 0.35, // per second
+            GRAVITY: -68,
+            JUMP_VELOCITY: 23,
+            SLIDE_DURATION: 0.72,
+            LANE_OFFSET: 2.3, // Left, Center, Right lane x-offsets
+            TURN_WINDOW: 11.5 // Distance tolerance for executing a 90-degree turn
+        };
+
+        // Directions: 0 = North (-Z), 1 = East (+X), 2 = South (+Z), 3 = West (-X)
+        const DIR_VECTORS = [
+            new THREE.Vector3(0, 0, -1), // 0: North
+            new THREE.Vector3(1, 0, 0),  // 1: East
+            new THREE.Vector3(0, 0, 1),  // 2: South
+            new THREE.Vector3(-1, 0, 0)  // 3: West
+        ];
+
+        // --- GLOBAL GAME STATE ---
+        let scene, camera, renderer;
+        let clock = new THREE.Clock();
+        let gameState = 'START'; // START, PLAYING, PAUSED, GAMEOVER
+
+        // Persistent Storage
+        let highScore = parseInt(localStorage.getItem('templeRun_highScore') || '0', 10);
+        let totalCoinsBank = parseInt(localStorage.getItem('templeRun_totalCoins') || '0', 10);
+
+        // Run Metrics
+        let score = 0;
+        let distance = 0;
+        let runCoins = 0;
+        let coinCombo = 0;
+        let multiplier = 1;
+        let currentSpeed = CONFIG.BASE_SPEED;
+        let stumbleCount = 0;
+        let stumbleDecayTimer = 0;
+
+        // Active Powerup State
+        let activePowerup = null; // { type: 'MAGNET' | 'SHIELD' | 'BOOST', timeLeft: 10, maxTime: 10 }
+
+        // Player Physics & Transform
+        const player = {
+            mesh: null,
+            leftLeg: null,
+            rightLeg: null,
+            leftArm: null,
+            rightArm: null,
+            shieldMesh: null,
+            pos: new THREE.Vector3(0, 0, 0),
+            dir: 0, // 0, 1, 2, 3
+            lane: 0, // -1 (left), 0 (center), 1 (right)
+            currentLaneOffset: 0,
+            velY: 0,
+            isGrounded: true,
+            isSliding: false,
+            slideTimer: 0,
+            runAnimTime: 0,
+            currentSegmentIndex: 0
+        };
+
+        // Demon Guardians (Chasers)
+        const demons = {
+            group: null,
+            leftDemon: null,
+            rightDemon: null,
+            chaseDistance: 9.0, // Closer = more danger
+            targetChaseDistance: 9.0
+        };
+
+        // World & Path Generation State
+        let pathSegments = []; // Array of segment objects
+        let genPos = new THREE.Vector3(0, 0, 0);
+        let genDir = 0;
+        let straightCount = 0;
+        let totalSegmentsGenerated = 0;
+        let particles = [];
+
+        // Shared Materials (for performance & visual polish)
+        const materials = {};
+
+        // --- INITIALIZATION ---
+        function initThree() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1f140d);
+            scene.fog = new THREE.FogExp2(0x1f140d, 0.0085);
+
+            camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 250);
+
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            setupLights();
+            createMaterials();
+            createPlayerMesh();
+            createDemonsMesh();
+            createEnvironmentDecor();
+
+            window.addEventListener('resize', onWindowResize);
+            setupInputHandlers();
+            updateStartScreenUI();
+
+            // Start render loop
+            requestAnimationFrame(animate);
+        }
+
+        function setupLights() {
+            const ambientLight = new THREE.AmbientLight(0xffedd5, 0.65);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfbbf24, 1.35);
+            dirLight.position.set(30, 60, 40);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 10;
+            dirLight.shadow.camera.far = 160;
+            const d = 45;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Warm torch-like glow following player
+            const playerLight = new THREE.PointLight(0xf97316, 1.2, 28);
+            playerLight.position.set(0, 5, 0);
+            scene.add(playerLight);
+            player.light = playerLight;
+        }
+
+        function createMaterials() {
+            materials.stonePath = new THREE.MeshStandardMaterial({
+                color: 0x78716c,
+                roughness: 0.85,
+                metalness: 0.1
+            });
+            materials.stoneTrim = new THREE.MeshStandardMaterial({
+                color: 0x57534e,
+                roughness: 0.9
+            });
+            materials.mossStone = new THREE.MeshStandardMaterial({
+                color: 0x4d7c0f,
+                roughness: 0.9
+            });
+            materials.goldCoin = new THREE.MeshStandardMaterial({
+                color: 0xfacc15,
+                emissive: 0xb45309,
+                emissiveIntensity: 0.35,
+                roughness: 0.25,
+                metalness: 0.85
+            });
+            materials.woodObstacle = new THREE.MeshStandardMaterial({
+                color: 0x7c2d12,
+                roughness: 0.85
+            });
+            materials.fireObstacle = new THREE.MeshStandardMaterial({
+                color: 0xef4444,
+                emissive: 0xdc2626,
+                emissiveIntensity: 0.9,
+                roughness: 0.3
+            });
+            materials.magnetPowerup = new THREE.MeshStandardMaterial({
+                color: 0x38bdf8,
+                emissive: 0x0284c7,
+                emissiveIntensity: 0.7
+            });
+            materials.shieldPowerup = new THREE.MeshStandardMaterial({
+                color: 0x4ade80,
+                emissive: 0x16a34a,
+                emissiveIntensity: 0.7
+            });
+            materials.boostPowerup = new THREE.MeshStandardMaterial({
+                color: 0xf472b6,
+                emissive: 0xdb2777,
+                emissiveIntensity: 0.8
+            });
+        }
+
+        function createEnvironmentDecor() {
+            // Distant misty abyss floor below the temple walls
+            const abyssGeo = new THREE.PlaneGeometry(800, 800);
+            const abyssMat = new THREE.MeshBasicMaterial({ color: 0x140d08 });
+            const abyss = new THREE.Mesh(abyssGeo, abyssMat);
+            abyss.rotation.x = -Math.PI / 2;
+            abyss.position.y = -25;
+            scene.add(abyss);
+            player.abyss = abyss;
+        }
+
+        // --- PLAYER & DEMON MESH CONSTRUCTION ---
+        function createPlayerMesh() {
+            const group = new THREE.Group();
+
+            // Torso (Explorer Jacket)
+            const torsoGeo = new THREE.BoxGeometry(0.9, 1.1, 0.55);
+            const torsoMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.7 });
+            const torso = new THREE.Mesh(torsoGeo, torsoMat);
+            torso.position.y = 1.45;
+            torso.castShadow = true;
+            group.add(torso);
+
+            // Backpack
+            const packGeo = new THREE.BoxGeometry(0.65, 0.75, 0.35);
+            const packMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+            const pack = new THREE.Mesh(packGeo, packMat);
+            pack.position.set(0, 1.5, 0.42);
+            pack.castShadow = true;
+            group.add(pack);
+
+            // Head
+            const headGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.35;
+            head.castShadow = true;
+            group.add(head);
+
+            // Explorer Fedora Hat
+            const brimGeo = new THREE.CylinderGeometry(0.62, 0.62, 0.08, 16);
+            const hatMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+            const brim = new THREE.Mesh(brimGeo, hatMat);
+            brim.position.y = 2.66;
+            group.add(brim);
+
+            const crownGeo = new THREE.CylinderGeometry(0.36, 0.42, 0.32, 16);
+            const crown = new THREE.Mesh(crownGeo, hatMat);
+            crown.position.y = 2.84;
+            group.add(crown);
+
+            // Limbs
+            const limbGeo = new THREE.BoxGeometry(0.32, 0.85, 0.32);
+            const pantsMat = new THREE.MeshStandardMaterial({ color: 0x292524 });
+
+            player.leftLeg = new THREE.Mesh(limbGeo, pantsMat);
+            player.leftLeg.position.set(-0.25, 0.5, 0);
+            player.leftLeg.castShadow = true;
+            group.add(player.leftLeg);
+
+            player.rightLeg = new THREE.Mesh(limbGeo, pantsMat);
+            player.rightLeg.position.set(0.25, 0.5, 0);
+            player.rightLeg.castShadow = true;
+            group.add(player.rightLeg);
+
+            player.leftArm = new THREE.Mesh(limbGeo, torsoMat);
+            player.leftArm.position.set(-0.65, 1.45, 0);
+            group.add(player.leftArm);
+
+            player.rightArm = new THREE.Mesh(limbGeo, torsoMat);
+            player.rightArm.position.set(0.65, 1.45, 0);
+            group.add(player.rightArm);
+
+            // Shield Aura Bubble
+            const shieldGeo = new THREE.SphereGeometry(1.75, 20, 20);
+            const shieldMat = new THREE.MeshStandardMaterial({
+                color: 0x4ade80,
+                transparent: true,
+                opacity: 0.32,
+                emissive: 0x22c55e,
+                emissiveIntensity: 0.5
+            });
+            player.shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+            player.shieldMesh.position.y = 1.4;
+            player.shieldMesh.visible = false;
+            group.add(player.shieldMesh);
+
+            scene.add(group);
+            player.mesh = group;
+        }
+
+        function createSingleDemon() {
+            const dGroup = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6 });
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 1.1), bodyMat);
+            body.position.y = 1.4;
+            body.castShadow = true;
+            dGroup.add(body);
+
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.85, 0.95), bodyMat);
+            head.position.set(0, 2.3, -0.2);
+            dGroup.add(head);
+
+            // Glowing Red Eyes
+            const eyeGeo = new THREE.BoxGeometry(0.2, 0.15, 0.1);
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.22, 2.35, -0.68);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.22, 2.35, -0.68);
+            dGroup.add(leftEye, rightEye);
+
+            // Horns
+            const hornGeo = new THREE.ConeGeometry(0.15, 0.65, 8);
+            const hornMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7 });
+            const lHorn = new THREE.Mesh(hornGeo, hornMat);
+            lHorn.position.set(-0.4, 2.85, -0.1);
+            lHorn.rotation.z = 0.3;
+            const rHorn = new THREE.Mesh(hornGeo, hornMat);
+            rHorn.position.set(0.4, 2.85, -0.1);
+            rHorn.rotation.z = -0.3;
+            dGroup.add(lHorn, rHorn);
+
+            return dGroup;
+        }
+
+        function createDemonsMesh() {
+            demons.group = new THREE.Group();
+            demons.leftDemon = createSingleDemon();
+            demons.leftDemon.position.set(-1.3, 0, 0);
+            demons.rightDemon = createSingleDemon();
+            demons.rightDemon.position.set(1.3, 0, 0);
+            demons.group.add(demons.leftDemon, demons.rightDemon);
+            scene.add(demons.group);
+        }
+
+        // --- PROCEDURAL PATH & OBSTACLE GENERATION ---
+        function clearWorld() {
+            for (const seg of pathSegments) {
+                scene.remove(seg.group);
+            }
+            pathSegments = [];
+            genPos.set(0, 0, 0);
+            genDir = 0;
+            straightCount = 0;
+            totalSegmentsGenerated = 0;
+        }
+
+        function generateNextSegment() {
+            const segGroup = new THREE.Group();
+            segGroup.position.copy(genPos);
+            segGroup.rotation.y = -genDir * (Math.PI / 2);
+
+            const segData = {
+                index: totalSegmentsGenerated,
+                group: segGroup,
+                pos: genPos.clone(),
+                dir: genDir,
+                type: 'STRAIGHT', // STRAIGHT, TURN_LEFT, TURN_RIGHT, GAP
+                turnDir: null,    // new direction after turn
+                turned: false,
+                obstacles: [],
+                coins: [],
+                powerup: null
+            };
+
+            // Determine segment type
+            let isSafeZone = totalSegmentsGenerated < 4;
+            let makeTurn = false;
+            let turnLeft = false;
+
+            if (!isSafeZone && straightCount >= 4 && Math.random() < 0.32) {
+                makeTurn = true;
+                turnLeft = Math.random() < 0.5;
+            }
+
+            if (makeTurn) {
+                segData.type = turnLeft ? 'TURN_LEFT' : 'TURN_RIGHT';
+                segData.turnDir = (genDir + (turnLeft ? 3 : 1)) % 4;
+                straightCount = 0;
+
+                // Build Corner Platform
+                buildPlatformMesh(segGroup, CONFIG.PATH_WIDTH, CONFIG.PATH_WIDTH, true);
+                addTorchPillar(segGroup, turnLeft ? CONFIG.PATH_WIDTH / 2 + 0.5 : -CONFIG.PATH_WIDTH / 2 - 0.5, 0);
+
+                // Spawn Coins curving around the turn
+                spawnTurnCoins(segGroup, segData, turnLeft);
+
+                // Advance generator position & direction
+                const step = CONFIG.PATH_WIDTH / 2 + CONFIG.SEGMENT_LENGTH / 2;
+                genPos.addScaledVector(DIR_VECTORS[segData.turnDir], step);
+                genDir = segData.turnDir;
+            } else {
+                straightCount++;
+                const isGap = !isSafeZone && straightCount > 1 && Math.random() < 0.16;
+
+                if (isGap) {
+                    segData.type = 'GAP';
+                    // Front & back broken edges
+                    buildBrokenGapMesh(segGroup);
+                    segData.obstacles.push({
+                        kind: 'GAP',
+                        zMin: -4.2,
+                        zMax: 4.2,
+                        lane: 'ALL'
+                    });
+                    // Arc of coins over the gap
+                    spawnJumpCoinArc(segGroup, segData, 0);
+                } else {
+                    // Normal Straight Stone Path
+                    buildPlatformMesh(segGroup, CONFIG.PATH_WIDTH, CONFIG.SEGMENT_LENGTH, false);
+
+                    // Decorative pillars along outer walls occasionally
+                    if (totalSegmentsGenerated % 2 === 0) {
+                        addTorchPillar(segGroup, -CONFIG.PATH_WIDTH / 2 - 0.4, 0);
+                        addTorchPillar(segGroup, CONFIG.PATH_WIDTH / 2 + 0.4, 0);
+                    }
+
+                    if (!isSafeZone) {
+                        populateObstaclesAndCollectibles(segGroup, segData);
+                    } else if (totalSegmentsGenerated >= 2) {
+                        spawnLineCoins(segGroup, segData, 0);
+                    }
+                }
+
+                // Advance generator straight
+                genPos.addScaledVector(DIR_VECTORS[genDir], CONFIG.SEGMENT_LENGTH);
+            }
+
+            scene.add(segGroup);
+            pathSegments.push(segData);
+            totalSegmentsGenerated++;
+        }
+
+        function buildPlatformMesh(group, width, length, isCorner) {
+            // Main stone deck
+            const geo = new THREE.BoxGeometry(width, 1.5, length);
+            const mesh = new THREE.Mesh(geo, materials.stonePath);
+            mesh.position.y = -0.75;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+
+            // Side curbs
+            if (!isCorner) {
+                const curbGeo = new THREE.BoxGeometry(0.45, 0.35, length);
+                const leftCurb = new THREE.Mesh(curbGeo, materials.stoneTrim);
+                leftCurb.position.set(-width / 2 + 0.22, 0.17, 0);
+                leftCurb.receiveShadow = true;
+
+                const rightCurb = new THREE.Mesh(curbGeo, materials.stoneTrim);
+                rightCurb.position.set(width / 2 - 0.22, 0.17, 0);
+                rightCurb.receiveShadow = true;
+
+                group.add(leftCurb, rightCurb);
+            }
+
+            // Support temple foundation column underneath
+            const baseGeo = new THREE.BoxGeometry(width * 0.85, 16, length * 0.85);
+            const baseMesh = new THREE.Mesh(baseGeo, materials.stoneTrim);
+            baseMesh.position.y = -9.5;
+            group.add(baseMesh);
+        }
+
+        function buildBrokenGapMesh(group) {
+            const edgeLen = (CONFIG.SEGMENT_LENGTH - 8.5) / 2;
+            const geo = new THREE.BoxGeometry(CONFIG.PATH_WIDTH, 1.5, edgeLen);
+
+            const nearEdge = new THREE.Mesh(geo, materials.stonePath);
+            nearEdge.position.set(0, -0.75, CONFIG.SEGMENT_LENGTH / 2 - edgeLen / 2);
+            nearEdge.receiveShadow = true;
+
+            const farEdge = new THREE.Mesh(geo, materials.stonePath);
+            farEdge.position.set(0, -0.75, -CONFIG.SEGMENT_LENGTH / 2 + edgeLen / 2);
+            farEdge.receiveShadow = true;
+
+            group.add(nearEdge, farEdge);
+        }
+
+        function addTorchPillar(group, x, z) {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 4.2, 0.9), materials.stoneTrim);
+            pillar.position.set(x, 2.1, z);
+            pillar.castShadow = true;
+            group.add(pillar);
+
+            const brazier = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 6), materials.fireObstacle);
+            brazier.position.set(x, 4.5, z);
+            group.add(brazier);
+        }
+
+        function populateObstaclesAndCollectibles(group, segData) {
+            const roll = Math.random();
+
+            if (roll < 0.26) {
+                // LOW HURDLE (Jump over)
+                const hurdleGroup = new THREE.Group();
+                const log = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, CONFIG.PATH_WIDTH - 0.8, 12), materials.woodObstacle);
+                log.rotation.z = Math.PI / 2;
+                log.position.y = 0.55;
+                log.castShadow = true;
+                hurdleGroup.add(log);
+
+                // Side supports
+                const postGeo = new THREE.BoxGeometry(0.4, 1.1, 0.4);
+                const p1 = new THREE.Mesh(postGeo, materials.stoneTrim);
+                p1.position.set(-CONFIG.PATH_WIDTH / 2 + 0.5, 0.55, 0);
+                const p2 = new THREE.Mesh(postGeo, materials.stoneTrim);
+                p2.position.set(CONFIG.PATH_WIDTH / 2 - 0.5, 0.55, 0);
+                hurdleGroup.add(p1, p2);
+
+                group.add(hurdleGroup);
+                segData.obstacles.push({ kind: 'LOW', zMin: -0.7, zMax: 0.7, lane: 'ALL' });
+                spawnJumpCoinArc(group, segData, 0);
+
+            } else if (roll < 0.52) {
+                // HIGH FLAME ARCH (Slide under)
+                const archGroup = new THREE.Group();
+                const pillarGeo = new THREE.BoxGeometry(0.7, 3.6, 0.7);
+                const lPillar = new THREE.Mesh(pillarGeo, materials.stoneTrim);
+                lPillar.position.set(-CONFIG.PATH_WIDTH / 2 + 0.5, 1.8, 0);
+                const rPillar = new THREE.Mesh(pillarGeo, materials.stoneTrim);
+                rPillar.position.set(CONFIG.PATH_WIDTH / 2 - 0.5, 1.8, 0);
+
+                const beam = new THREE.Mesh(new THREE.BoxGeometry(CONFIG.PATH_WIDTH, 1.4, 0.8), materials.fireObstacle);
+                beam.position.set(0, 2.35, 0);
+
+                archGroup.add(lPillar, rPillar, beam);
+                group.add(archGroup);
+                segData.obstacles.push({ kind: 'HIGH', zMin: -0.7, zMax: 0.7, lane: 'ALL' });
+                spawnLineCoins(group, segData, 0);
+
+            } else if (roll < 0.82) {
+                // LANE BLOCKERS (1 or 2 lanes blocked by ancient stone totems)
+                const lanes = [-1, 0, 1];
+                // Shuffle lanes
+                lanes.sort(() => Math.random() - 0.5);
+                const numBlocked = Math.random() < 0.45 ? 2 : 1;
+
+                for (let i = 0; i < numBlocked; i++) {
+                    const blockedLane = lanes[i];
+                    const blockMesh = new THREE.Mesh(
+                        new THREE.BoxGeometry(1.95, 2.8, 1.8),
+                        materials.stoneTrim
+                    );
+                    blockMesh.position.set(blockedLane * CONFIG.LANE_OFFSET, 1.4, 0);
+                    blockMesh.castShadow = true;
+
+                    // Gold trim accent on totem
+                    const accent = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.3, 1.9), materials.goldCoin);
+                    accent.position.set(blockedLane * CONFIG.LANE_OFFSET, 2.2, 0);
+
+                    group.add(blockMesh, accent);
+                    segData.obstacles.push({
+                        kind: 'BLOCKER',
+                        zMin: -1.0,
+                        zMax: 1.0,
+                        lane: blockedLane
+                    });
+                }
+
+                // Spawn coins in the safe open lane
+                const safeLane = lanes[numBlocked];
+                spawnLineCoins(group, segData, safeLane);
+            } else {
+                // Open path with coins or a rare Power-up
+                const coinLane = [-1, 0, 1][Math.floor(Math.random() * 3)];
+                spawnLineCoins(group, segData, coinLane);
+
+                if (Math.random() < 0.25) {
+                    spawnPowerup(group, segData, coinLane);
+                }
+            }
+        }
+
+        // --- COLLECTIBLES & POWER-UPS ---
+        function createCoinMesh(x, y, z) {
+            const geo = new THREE.CylinderGeometry(0.45, 0.45, 0.14, 16);
+            geo.rotateX(Math.PI / 2);
+            const mesh = new THREE.Mesh(geo, materials.goldCoin);
+            mesh.position.set(x, y, z);
+            mesh.castShadow = true;
+            return mesh;
+        }
+
+        function spawnLineCoins(group, segData, lane) {
+            const x = lane * CONFIG.LANE_OFFSET;
+            for (let z = -5; z <= 5; z += 2.5) {
+                const coin = createCoinMesh(x, 1.1, z);
+                group.add(coin);
+                segData.coins.push({ mesh: coin, collected: false });
+            }
+        }
+
+        function spawnJumpCoinArc(group, segData, lane) {
+            const x = lane * CONFIG.LANE_OFFSET;
+            const zPositions = [-4, -2, 0, 2, 4];
+            const yHeights = [1.2, 2.3, 2.8, 2.3, 1.2];
+            for (let i = 0; i < zPositions.length; i++) {
+                const coin = createCoinMesh(x, yHeights[i], zPositions[i]);
+                group.add(coin);
+                segData.coins.push({ mesh: coin, collected: false });
+            }
+        }
+
+        function spawnTurnCoins(group, segData, turnLeft) {
+            for (let i = -1; i <= 1; i++) {
+                const coin = createCoinMesh(i * 1.1, 1.1, i * (turnLeft ? 0.6 : -0.6));
+                group.add(coin);
+                segData.coins.push({ mesh: coin, collected: false });
+            }
+        }
+
+        function spawnPowerup(group, segData, lane) {
+            const types = ['MAGNET', 'SHIELD', 'BOOST'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const mat = type === 'MAGNET' ? materials.magnetPowerup :
+                        type === 'SHIELD' ? materials.shieldPowerup : materials.boostPowerup;
+
+            const geo = new THREE.OctahedronGeometry(0.65, 0);
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(lane * CONFIG.LANE_OFFSET, 1.4, 0);
+            group.add(mesh);
+
+            segData.powerup = { type, mesh, collected: false };
+        }
+
+        // --- PARTICLE EFFECTS ---
+        function spawnBurstParticles(worldPos, colorHex, count = 12) {
+            const geo = new THREE.BoxGeometry(0.22, 0.22, 0.22);
+            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+            for (let i = 0; i < count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(worldPos);
+                mesh.position.y += 1.0;
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 10,
+                    Math.random() * 8 + 2,
+                    (Math.random() - 0.5) * 10
+                );
+                scene.add(mesh);
+                particles.push({ mesh, vel, life: 0.55 });
+            }
+        }
+
+        function updateParticles(dt) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                } else {
+                    p.vel.y -= 20 * dt;
+                    p.mesh.position.addScaledVector(p.vel, dt);
+                    p.mesh.scale.setScalar(p.life * 1.8);
+                }
+            }
+        }
+
+        // --- GAMEPLAY CONTROLS & ACTIONS ---
+        function handleAction(action) {
+            if (gameState !== 'PLAYING') return;
+
+            if (action === 'LEFT') {
+                if (!tryExecuteTurn(true)) {
+                    if (player.lane > -1) {
+                        player.lane--;
+                    }
+                }
+            } else if (action === 'RIGHT') {
+                if (!tryExecuteTurn(false)) {
+                    if (player.lane < 1) {
+                        player.lane++;
+                    }
+                }
+            } else if (action === 'UP') {
+                if (player.isGrounded) {
+                    player.velY = CONFIG.JUMP_VELOCITY;
+                    player.isGrounded = false;
+                    player.isSliding = false;
+                    player.mesh.scale.y = 1;
+                    sound.playJump();
+                }
+            } else if (action === 'DOWN') {
+                if (!player.isSliding) {
+                    player.isSliding = true;
+                    player.slideTimer = CONFIG.SLIDE_DURATION;
+                    if (!player.isGrounded) {
+                        player.velY = -38; // Fast drop slam
+                    }
+                    sound.playSlide();
+                }
+            }
+        }
+
+        function tryExecuteTurn(isLeft) {
+            const desiredDir = (player.dir + (isLeft ? 3 : 1)) % 4;
+
+            // Find upcoming or current turn segment within turn window
+            for (let i = 0; i < Math.min(pathSegments.length, 4); i++) {
+                const seg = pathSegments[i];
+                if (!seg.turned && (seg.type === 'TURN_LEFT' || seg.type === 'TURN_RIGHT')) {
+                    const dist = player.pos.distanceTo(seg.pos);
+                    if (dist <= CONFIG.TURN_WINDOW && seg.turnDir === desiredDir) {
+                        // Snap player smoothly onto the center axis of the new direction
+                        seg.turned = true;
+                        player.dir = desiredDir;
+                        player.pos.x = seg.pos.x;
+                        player.pos.z = seg.pos.z;
+                        sound.playTurn();
+                        document.getElementById('turn-prompt').classList.add('hidden');
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function setupInputHandlers() {
+            // Keyboard
+            window.addEventListener('keydown', (e) => {
+                if (e.repeat) return;
+                if (gameState === 'PLAYING') {
+                    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') handleAction('LEFT');
+                    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') handleAction('RIGHT');
+                    else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') handleAction('UP');
+                    else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') handleAction('DOWN');
+                    else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') togglePause();
+                } else if (gameState === 'PAUSED' && (e.key === 'Escape' || e.key === 'p' || e.key === 'P')) {
+                    togglePause();
+                }
+            });
+
+            // Touch Swipe Detection
+            let touchStartX = 0;
+            let touchStartY = 0;
+            const canvas = document.getElementById('game-canvas');
+
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (gameState !== 'PLAYING' || e.changedTouches.length === 0) return;
+                const dx = e.changedTouches[0].clientX - touchStartX;
+                const dy = e.changedTouches[0].clientY - touchStartY;
+                const absX = Math.abs(dx);
+                const absY = Math.abs(dy);
+
+                if (Math.max(absX, absY) > 25) {
+                    if (absX > absY) {
+                        handleAction(dx > 0 ? 'RIGHT' : 'LEFT');
+                    } else {
+                        handleAction(dy > 0 ? 'DOWN' : 'UP');
+                    }
+                }
+            }, { passive: true });
+
+            // On-screen buttons
+            document.getElementById('ctrl-left').addEventListener('click', () => handleAction('LEFT'));
+            document.getElementById('ctrl-right').addEventListener('click', () => handleAction('RIGHT'));
+            document.getElementById('ctrl-up').addEventListener('click', () => handleAction('UP'));
+            document.getElementById('ctrl-down').addEventListener('click', () => handleAction('DOWN'));
+
+            // Menu Buttons
+            document.getElementById('btn-play').addEventListener('click', startNewGame);
+            document.getElementById('btn-play-again').addEventListener('click', startNewGame);
+            document.getElementById('btn-pause').addEventListener('click', togglePause);
+            document.getElementById('btn-resume').addEventListener('click', togglePause);
+            document.getElementById('btn-restart-pause').addEventListener('click', startNewGame);
+
+            document.getElementById('btn-sound-toggle').addEventListener('click', async () => {
+                await sound.init();
+                sound.enabled = !sound.enabled;
+                document.getElementById('sound-icon').textContent = sound.enabled ? '🔊' : '🔇';
+            });
+        }
+
+        // --- CORE GAME LOOP & PHYSICS ---
+        async function startNewGame() {
+            await sound.init();
+
+            clearWorld();
+
+            // Reset player
+            player.pos.set(0, 0, 0);
+            player.dir = 0;
+            player.lane = 0;
+            player.currentLaneOffset = 0;
+            player.velY = 0;
+            player.isGrounded = true;
+            player.isSliding = false;
+            player.slideTimer = 0;
+            player.mesh.scale.set(1, 1, 1);
+            player.shieldMesh.visible = false;
+
+            // Reset metrics
+            score = 0;
+            distance = 0;
+            runCoins = 0;
+            coinCombo = 0;
+            multiplier = 1;
+            currentSpeed = CONFIG.BASE_SPEED;
+            stumbleCount = 0;
+            activePowerup = null;
+
+            demons.chaseDistance = 4.5; // Start close so player sees them pursuing!
+            demons.targetChaseDistance = 11.5;
+
+            // Generate initial temple path
+            for (let i = 0; i < CONFIG.VISIBLE_SEGMENTS; i++) {
+                generateNextSegment();
+            }
+
+            // UI Switches
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-pause').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('hud-top').classList.remove('hidden');
+            document.getElementById('mobile-controls').classList.remove('hidden');
+            document.getElementById('powerup-container').classList.add('hidden');
+            document.getElementById('danger-vignette').classList.remove('danger-active');
+
+            gameState = 'PLAYING';
+            clock.getDelta(); // Flush delta
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                document.getElementById('screen-pause').classList.remove('hidden');
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                document.getElementById('screen-pause').classList.add('hidden');
+                clock.getDelta();
+            }
+        }
+
+        function triggerGameOver(reason) {
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER';
+            sound.playGameOver();
+
+            spawnBurstParticles(player.pos, 0xef4444, 24);
+
+            const finalScore = Math.floor(score);
+            const isNewRecord = finalScore > highScore;
+            if (isNewRecord) {
+                highScore = finalScore;
+                localStorage.setItem('templeRun_highScore', highScore.toString());
+            }
+
+            totalCoinsBank += runCoins;
+            localStorage.setItem('templeRun_totalCoins', totalCoinsBank.toString());
+
+            // Update Game Over UI
+            document.getElementById('gameover-reason').textContent = reason;
+            document.getElementById('over-score').textContent = finalScore.toLocaleString();
+            document.getElementById('over-distance').textContent = `${Math.floor(distance)}m`;
+            document.getElementById('over-coins').textContent = runCoins.toLocaleString();
+            document.getElementById('over-best').textContent = highScore.toLocaleString();
+
+            const badge = document.getElementById('new-record-badge');
+            if (isNewRecord && finalScore > 0) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+
+            document.getElementById('hud-top').classList.add('hidden');
+            document.getElementById('mobile-controls').classList.add('hidden');
+            document.getElementById('turn-prompt').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.remove('hidden');
+            updateStartScreenUI();
+        }
+
+        function updateStartScreenUI() {
+            document.getElementById('start-best-score').textContent = highScore.toLocaleString();
+            document.getElementById('start-total-coins').textContent = totalCoinsBank.toLocaleString();
+        }
+
+        function updateGameplay(dt) {
+            // 1. Speed & Powerup Progression
+            let effectiveSpeed = currentSpeed;
+            if (activePowerup) {
+                activePowerup.timeLeft -= dt;
+                if (activePowerup.type === 'BOOST') {
+                    effectiveSpeed *= 1.45;
+                }
+                updatePowerupHUD();
+                if (activePowerup.timeLeft <= 0) {
+                    activePowerup = null;
+                    player.shieldMesh.visible = false;
+                    document.getElementById('powerup-container').classList.add('hidden');
+                }
+            } else {
+                currentSpeed = Math.min(CONFIG.MAX_SPEED, currentSpeed + CONFIG.SPEED_INCREMENT * dt);
+            }
+
+            // 2. Forward Movement
+            const moveStep = effectiveSpeed * dt;
+            const forwardVec = DIR_VECTORS[player.dir];
+            player.pos.addScaledVector(forwardVec, moveStep);
+            distance += moveStep;
+            score += moveStep * 2.5 * multiplier;
+
+            // 3. Lateral Lane Interpolation
+            const targetOffset = player.lane * CONFIG.LANE_OFFSET;
+            player.currentLaneOffset += (targetOffset - player.currentLaneOffset) * Math.min(1, dt * 16);
+
+            // Compute lateral world vector (Right vector relative to player.dir)
+            const rightDir = (player.dir + 1) % 4;
+            const rightVec = DIR_VECTORS[rightDir];
+
+            // 4. Vertical Jump & Gravity Physics
+            if (!player.isGrounded) {
+                player.pos.y += player.velY * dt;
+                player.velY += CONFIG.GRAVITY * dt;
+                if (player.pos.y <= 0) {
+                    player.pos.y = 0;
+                    player.velY = 0;
+                    player.isGrounded = true;
+                }
+            }
+
+            // 5. Slide Timer & Scale
+            if (player.isSliding) {
+                player.slideTimer -= dt;
+                player.mesh.scale.y = 0.45;
+                if (player.slideTimer <= 0) {
+                    player.isSliding = false;
+                    player.mesh.scale.y = 1.0;
+                }
+            }
+
+            // 6. Apply Player World Transform & Running Limb Animation
+            const finalPlayerWorldPos = player.pos.clone().addScaledVector(rightVec, player.currentLaneOffset);
+            player.mesh.position.copy(finalPlayerWorldPos);
+            player.mesh.rotation.y = -player.dir * (Math.PI / 2);
+
+            if (player.light) {
+                player.light.position.set(finalPlayerWorldPos.x, finalPlayerWorldPos.y + 4, finalPlayerWorldPos.z);
+            }
+            if (player.abyss) {
+                player.abyss.position.x = finalPlayerWorldPos.x;
+                player.abyss.position.z = finalPlayerWorldPos.z;
+            }
+
+            // Animate limbs
+            if (player.isGrounded && !player.isSliding) {
+                player.runAnimTime += dt * effectiveSpeed * 0.65;
+                const swing = Math.sin(player.runAnimTime) * 0.85;
+                player.leftLeg.rotation.x = swing;
+                player.rightLeg.rotation.x = -swing;
+                player.leftArm.rotation.x = -swing * 0.8;
+                player.rightArm.rotation.x = swing * 0.8;
+                player.mesh.position.y += Math.abs(Math.cos(player.runAnimTime)) * 0.15;
+            } else {
+                player.leftLeg.rotation.x = 0.4;
+                player.rightLeg.rotation.x = -0.3;
+            }
+
+            if (player.shieldMesh.visible) {
+                player.shieldMesh.rotation.y += dt * 2;
+            }
+
+            // 7. Demon Guardians Pursuit Logic
+            if (stumbleCount > 0) {
+                stumbleDecayTimer -= dt;
+                if (stumbleDecayTimer <= 0) {
+                    stumbleCount = 0;
+                    demons.targetChaseDistance = 12.0;
+                    document.getElementById('danger-vignette').classList.remove('danger-active');
+                }
+            }
+            demons.chaseDistance += (demons.targetChaseDistance - demons.chaseDistance) * dt * 2.5;
+            const demonPos = finalPlayerWorldPos.clone().addScaledVector(forwardVec, -demons.chaseDistance);
+            demonPos.y = 0;
+            demons.group.position.copy(demonPos);
+            demons.group.rotation.y = -player.dir * (Math.PI / 2);
+            demons.leftDemon.position.y = Math.abs(Math.sin(player.runAnimTime * 1.1)) * 0.25;
+            demons.rightDemon.position.y = Math.abs(Math.cos(player.runAnimTime * 1.1)) * 0.25;
+
+            // 8. Check Segment Collisions, Turns & Collectibles
+            evaluateSegmentsAndCollisions(dt, finalPlayerWorldPos);
+
+            // 9. Update Camera Follow
+            updateCamera(dt, finalPlayerWorldPos, forwardVec);
+
+            // 10. Update HUD
+            document.getElementById('score-display').textContent = Math.floor(score).toLocaleString();
+            document.getElementById('coins-display').textContent = runCoins.toLocaleString();
+            document.getElementById('multiplier-display').textContent = `${multiplier}x`;
+        }
+
+        function evaluateSegmentsAndCollisions(dt, playerWorldPos) {
+            let showTurnHint = false;
+
+            for (let i = 0; i < pathSegments.length; i++) {
+                const seg = pathSegments[i];
+
+                // Spin coins & powerups
+                for (const c of seg.coins) {
+                    if (!c.collected) {
+                        c.mesh.rotation.y += dt * 3.5;
+                    }
+                }
+                if (seg.powerup && !seg.powerup.collected) {
+                    seg.powerup.mesh.rotation.y += dt * 3;
+                    seg.powerup.mesh.position.y = 1.4 + Math.sin(clock.elapsedTime * 5) * 0.25;
+                }
+
+                // Transform player world position into segment's local coordinate space
+                const localPos = playerWorldPos.clone().sub(seg.pos);
+                localPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), seg.dir * (Math.PI / 2));
+
+                // Check if approaching an unturned corner
+                if (!seg.turned && (seg.type === 'TURN_LEFT' || seg.type === 'TURN_RIGHT')) {
+                    const distToCorner = player.pos.distanceTo(seg.pos);
+                    if (distToCorner < 16 && distToCorner > 3.5) {
+                        showTurnHint = true;
+                    }
+                    // Missed turn check!
+                    if (localPos.z < -CONFIG.PATH_WIDTH / 2 - 1.2) {
+                        if (activePowerup && activePowerup.type === 'BOOST') {
+                            // Auto-turn during boost!
+                            tryExecuteTurn(seg.type === 'TURN_LEFT');
+                        } else {
+                            triggerGameOver("FELL OFF THE TEMPLE WALL");
+                            return;
+                        }
+                    }
+                }
+
+                // Check Collectibles if player is near this segment
+                if (Math.abs(localPos.z) < CONFIG.SEGMENT_LENGTH) {
+                    // Coins
+                    for (const c of seg.coins) {
+                        if (c.collected) continue;
+                        const dist = localPos.distanceTo(c.mesh.position);
+                        const pickupRadius = (activePowerup && activePowerup.type === 'MAGNET') ? 7.5 : 1.55;
+
+                        if (activePowerup && activePowerup.type === 'MAGNET' && dist < 8.5) {
+                            c.mesh.position.lerp(localPos, dt * 12);
+                        }
+
+                        if (dist < pickupRadius) {
+                            c.collected = true;
+                            c.mesh.visible = false;
+                            runCoins++;
+                            coinCombo++;
+                            multiplier = Math.min(5, 1 + Math.floor(coinCombo / 15));
+                            score += 25 * multiplier;
+                            sound.playCoin(runCoins);
+                            spawnBurstParticles(c.mesh.getWorldPosition(new THREE.Vector3()), 0xfacc15, 5);
+                        }
+                    }
+
+                    // Power-ups
+                    if (seg.powerup && !seg.powerup.collected) {
+                        if (localPos.distanceTo(seg.powerup.mesh.position) < 1.8) {
+                            seg.powerup.collected = true;
+                            seg.powerup.mesh.visible = false;
+                            activatePowerup(seg.powerup.type);
+                        }
+                    }
+
+                    // Obstacles
+                    for (const obs of seg.obstacles) {
+                        if (localPos.z >= obs.zMin && localPos.z <= obs.zMax) {
+                            const isProtected = activePowerup && (activePowerup.type === 'SHIELD' || activePowerup.type === 'BOOST');
+
+                            if (obs.kind === 'GAP') {
+                                if (player.pos.y < 0.35 && !isProtected) {
+                                    triggerGameOver("FELL INTO THE ABYSS");
+                                    return;
+                                }
+                            } else if (obs.kind === 'LOW') {
+                                if (player.pos.y < 0.95 && !obs.hit) {
+                                    obs.hit = true;
+                                    handleObstacleHit(isProtected, "TRIPPED ON ANCIENT TIMBER");
+                                }
+                            } else if (obs.kind === 'HIGH') {
+                                if (!player.isSliding && !obs.hit) {
+                                    obs.hit = true;
+                                    handleObstacleHit(isProtected, "SCORCHED BY TEMPLE FLAMES");
+                                }
+                            } else if (obs.kind === 'BLOCKER') {
+                                if (Math.abs(player.currentLaneOffset - obs.lane * CONFIG.LANE_OFFSET) < 1.25 && !obs.hit) {
+                                    obs.hit = true;
+                                    if (isProtected) {
+                                        consumeShieldOrBoost();
+                                    } else {
+                                        triggerGameOver("SMASHED INTO STONE TOTEM");
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Toggle Turn Hint UI
+            const turnPrompt = document.getElementById('turn-prompt');
+            if (showTurnHint) turnPrompt.classList.remove('hidden');
+            else turnPrompt.classList.add('hidden');
+
+            // Recycle old behind-camera segments & generate new ahead segments
+            while (pathSegments.length > 0) {
+                const firstSeg = pathSegments[0];
+                const distFromPlayer = player.pos.distanceTo(firstSeg.pos);
+                // Check if segment is far behind player
+                const toSeg = firstSeg.pos.clone().sub(player.pos);
+                const forwardDot = toSeg.dot(DIR_VECTORS[player.dir]);
+
+                if (forwardDot < -CONFIG.SEGMENT_LENGTH * 2.5 && distFromPlayer > 35) {
+                    scene.remove(firstSeg.group);
+                    pathSegments.shift();
+                    generateNextSegment();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function handleObstacleHit(isProtected, fatalReason) {
+            if (isProtected) {
+                consumeShieldOrBoost();
+                return;
+            }
+
+            sound.playStumble();
+            coinCombo = 0;
+            multiplier = 1;
+            stumbleCount++;
+            stumbleDecayTimer = 6.0;
+            demons.targetChaseDistance = 2.6;
+            document.getElementById('danger-vignette').classList.add('danger-active');
+            spawnBurstParticles(player.pos, 0xf97316, 14);
+
+            if (stumbleCount >= 2) {
+                triggerGameOver(fatalReason);
+            }
+        }
+
+        function consumeShieldOrBoost() {
+            sound.playPowerup();
+            spawnBurstParticles(player.pos, 0x4ade80, 18);
+            if (activePowerup && activePowerup.type === 'SHIELD') {
+                activePowerup = null;
+                player.shieldMesh.visible = false;
+                document.getElementById('powerup-container').classList.add('hidden');
+            }
+        }
+
+        function activatePowerup(type) {
+            sound.playPowerup();
+            const duration = type === 'BOOST' ? 5.0 : 10.0;
+            activePowerup = { type, timeLeft: duration, maxTime: duration };
+
+            player.shieldMesh.visible = (type === 'SHIELD' || type === 'BOOST');
+            player.shieldMesh.material.color.setHex(type === 'BOOST' ? 0xf472b6 : 0x4ade80);
+
+            const container = document.getElementById('powerup-container');
+            const nameEl = document.getElementById('powerup-name');
+            container.classList.remove('hidden');
+            nameEl.textContent = type === 'MAGNET' ? 'COIN MAGNET' : type === 'SHIELD' ? 'JADE SHIELD' : 'RELIC BOOST';
+            spawnBurstParticles(player.pos, 0x38bdf8, 16);
+        }
+
+        function updatePowerupHUD() {
+            if (!activePowerup) return;
+            const pct = Math.max(0, (activePowerup.timeLeft / activePowerup.maxTime) * 100);
+            document.getElementById('powerup-time').textContent = `${Math.ceil(activePowerup.timeLeft)}s`;
+            document.getElementById('powerup-bar').style.width = `${pct}%`;
+        }
+
+        function updateCamera(dt, playerWorldPos, forwardVec) {
+            // Smooth third-person trailing camera
+            const idealOffset = forwardVec.clone().multiplyScalar(-9.5);
+            idealOffset.y = 5.6 + player.pos.y * 0.35;
+
+            const targetCamPos = playerWorldPos.clone().add(idealOffset);
+            camera.position.lerp(targetCamPos, Math.min(1, dt * 10));
+
+            const lookTarget = playerWorldPos.clone().addScaledVector(forwardVec, 10);
+            lookTarget.y = 2.0 + player.pos.y * 0.25;
+            camera.lookAt(lookTarget);
+        }
+
+        function updateStartScreenCamera(time) {
+            // Dramatic orbiting camera around the temple explorer before run starts
+            const radius = 8.5;
+            camera.position.x = Math.sin(time * 0.4) * radius;
+            camera.position.z = Math.cos(time * 0.4) * radius;
+            camera.position.y = 4.2;
+            camera.lookAt(0, 1.8, -4);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+
+            if (gameState === 'PLAYING') {
+                updateGameplay(dt);
+            } else if (gameState === 'START') {
+                updateStartScreenCamera(clock.elapsedTime);
+            }
+
+            updateParticles(dt);
+            renderer.render(scene, camera);
+        }
+
+        // Boot up on window load
+        window.onload = function() {
+            initThree();
+            // Build initial backdrop temple path for the start screen
+            for (let i = 0; i < 12; i++) {
+                generateNextSegment();
+            }
+        };
+    </script>
+</body>
+</html>
